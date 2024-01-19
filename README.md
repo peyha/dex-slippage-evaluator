@@ -27,7 +27,7 @@ pip -r install requirements.txt
 ## How to run
 
 ``
-python predict_slippage.py 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 0.95
+python predict_slippage.py <collateral_token_address> <loan_token_address> <lltv> 
 ``
 ## Example 
 ``````
