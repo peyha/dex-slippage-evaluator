@@ -84,7 +84,7 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
     amount_right = total_supply_in
 
     # Binary search
-    N_iter = 20
+    N_iter = 10
     for _ in range(N_iter):
         amount_mid = (amount_left + amount_right) // 2
 
@@ -115,8 +115,8 @@ if __name__ == '__main__':
     token_out = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' # weth
     lltv = 0.95
 
-    token_in = sys.argv[1]
-    token_out = sys.argv[2]
+    token_in = Web3.to_checksum_address(sys.argv[1])
+    token_out = Web3.to_checksum_address(sys.argv[2])
     lltv = float(sys.argv[3])
 
     api_key = os.environ['ONEINCH_API_KEY']
