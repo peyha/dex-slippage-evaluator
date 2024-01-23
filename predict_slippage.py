@@ -61,6 +61,33 @@ def get_amount_out(amount_in, token_in, token_out, api_key):
 
     return amount_out
 
+def get_path(amount_in, token_in, token_out, api_key):
+    ''' Get onchain amount out given amount in and token addresses
+     using 1inch Routing API'''
+    
+    api_url = "https://api.1inch.dev/swap/v5.2/1/quote"
+
+    # Prepare request components
+    headers = {
+        "Authorization": "Bearer " + api_key,
+    }
+    body = {}
+    params = {
+        "src": token_in,
+        "dst": token_out,
+        "amount": str(amount_in),
+        "includeProtocols": "true",
+    }
+
+    response = requests.get(api_url, headers=headers, params=params)
+    try:
+        path = response.json()['protocols']
+    except:
+        print(response.text)
+        path = []
+
+    return path
+
 def get_onchain_price(token_in, decimal_in, api_key):
     ''' Get onchain price of a token in USD 
     using 1inch Routing API by swapping 1 token for USDC'''
@@ -76,7 +103,7 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
     ''' Predict the amount of token_in needed to cause a certain slippage
     percentage on token_in/token_out pair using 1inch Routing API'''
 
-    amount_in = 1 ** 10**decimal_in
+    amount_in = 1 * 10**decimal_in
     amount_out = get_amount_out(amount_in, token_in, token_out, api_key)
     initial_price = amount_out / amount_in # reference price
 
@@ -92,7 +119,8 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
         time.sleep(1.5)
         amount_out = get_amount_out(amount_mid, token_in, token_out, api_key)
 
-        price_ratio = amount_out / amount_mid / initial_price # current_price / price_reference
+        current_price = amount_out / amount_mid
+        price_ratio = current_price / initial_price # price ratio
         if price_ratio > percentage:
             amount_left = amount_mid
         else:
@@ -140,6 +168,16 @@ if __name__ == '__main__':
     time.sleep(1.5)
     price = get_onchain_price(token_in, decimal_in, api_key)
     amount_slippage_usd = amount_slippage * price / 10**decimal_in
+
+    time.sleep(1.5)
+    path = get_path(amount_slippage, token_in, token_out, api_key)
+
+    print("Swap should be done using the following path:")
+    for subpath in path[0][0]:
+        try:
+            print(subpath['name'], '->', subpath['part'], "% of the swap")
+        except:
+            print(subpath)
 
     print(f'Amount to cause {(1-p)*100}% slippage on {symbol_in}/{symbol_out}:\n' +\
           f'\r {number_to_readable(amount_slippage / 10**decimal_in)} {symbol_in} = '+\
