@@ -111,6 +111,7 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
 
         price_ratio = amount_out / amount_mid / \
             initial_price  # current_price / price_reference
+        
         if price_ratio > percentage:
             amount_left = amount_mid
         else:
