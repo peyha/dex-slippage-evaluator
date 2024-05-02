@@ -6,6 +6,14 @@ import time
 
 from web3 import Web3
 
+BASE_CHAIN_ID = 8453
+ETHEREUM_CHAIN_ID = 1
+
+chain_id_to_usdc = {
+    ETHEREUM_CHAIN_ID: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    BASE_CHAIN_ID: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+}
+
 
 def number_to_readable(num):
     ''' Convert a number to a readable format
@@ -21,7 +29,8 @@ def number_to_readable(num):
         return f"{num/1000000000:.1f}B"
     else:
         return f"{num/1000000000000:.1f}T"
-    
+
+
 def get_erc20_info(token_address, w3):
     ''' Get total supply, decimal and symbol of an ERC20 token '''
 
@@ -35,17 +44,17 @@ def get_erc20_info(token_address, w3):
 
     return total_supply, decimal, symbol
 
-def get_amount_out(amount_in, token_in, token_out, api_key):
+
+def get_amount_out(amount_in, token_in, token_out, api_key, chain_id):
     ''' Get onchain amount out given amount in and token addresses
      using 1inch Routing API'''
-    
-    api_url = "https://api.1inch.dev/swap/v5.2/1/quote"
+
+    api_url = f"https://api.1inch.dev/swap/v5.2/{chain_id}/quote"
 
     # Prepare request components
     headers = {
         "Authorization": "Bearer " + api_key,
     }
-    body = {}
     params = {
         "src": token_in,
         "dst": token_out,
@@ -55,72 +64,54 @@ def get_amount_out(amount_in, token_in, token_out, api_key):
     response = requests.get(api_url, headers=headers, params=params)
     try:
         amount_out = int(response.json()['toAmount'])
-    except:
-        print(response.text)
-        amount_out = 0
 
+    except:
+        if 'insufficient liquidity' in response.text:
+            amount_out = 1  # Almost zero
+        else:
+            raise ValueError(f"API error: {response.text}")
     return amount_out
 
-def get_path(amount_in, token_in, token_out, api_key):
-    ''' Get onchain amount out given amount in and token addresses
-     using 1inch Routing API'''
-    
-    api_url = "https://api.1inch.dev/swap/v5.2/1/quote"
 
-    # Prepare request components
-    headers = {
-        "Authorization": "Bearer " + api_key,
-    }
-    body = {}
-    params = {
-        "src": token_in,
-        "dst": token_out,
-        "amount": str(amount_in),
-        "includeProtocols": "true",
-    }
-
-    response = requests.get(api_url, headers=headers, params=params)
-    try:
-        path = response.json()['protocols']
-    except:
-        print(response.text)
-        path = []
-
-    return path
-
-def get_onchain_price(token_in, decimal_in, api_key):
+def get_onchain_price(token_in, decimal_in, api_key, chain_id):
     ''' Get onchain price of a token in USD 
     using 1inch Routing API by swapping 1 token for USDC'''
 
-    token_out, decimal_out = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6 # USDC
+    token_out, decimal_out = chain_id_to_usdc[chain_id], 6  # USDC
 
-    amount_out = get_amount_out(1 * 10**decimal_in, token_in, token_out, api_key)
+    amount_out = get_amount_out(
+        1 * 10**decimal_in, token_in, token_out, api_key, chain_id)
     price = amount_out / 10**decimal_out
 
     return price
 
-def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_out, decimal_out, api_key):
+
+def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_out, decimal_out, api_key, chain_id):
     ''' Predict the amount of token_in needed to cause a certain slippage
     percentage on token_in/token_out pair using 1inch Routing API'''
 
     amount_in = 1 * 10**decimal_in
-    amount_out = get_amount_out(amount_in, token_in, token_out, api_key)
-    initial_price = amount_out / amount_in # reference price
+    amount_out = get_amount_out(
+        amount_in, token_in, token_out, api_key, chain_id)
+    initial_price = amount_out / amount_in  # reference price
 
     amount_left = 1 * 10**decimal_in
     amount_right = total_supply_in
 
     # Binary search
-    N_iter = 10
+    N_iter = 20
     for _ in range(N_iter):
+
         amount_mid = (amount_left + amount_right) // 2
 
         # Sleep to prevent API spamming
         time.sleep(1.5)
-        amount_out = get_amount_out(amount_mid, token_in, token_out, api_key)
+        amount_out = get_amount_out(
+            amount_mid, token_in, token_out, api_key, chain_id)
 
-        current_price = amount_out / amount_mid
-        price_ratio = current_price / initial_price # price ratio
+        price_ratio = amount_out / amount_mid / \
+            initial_price  # current_price / price_reference
+        
         if price_ratio > percentage:
             amount_left = amount_mid
         else:
@@ -130,22 +121,28 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
 
 
 if __name__ == '__main__':
-    
-    if len(sys.argv) != 4:
-        print('Usage: python predict_slippage.py token_in token_out lltv')
+
+    if len(sys.argv) != 4 and len(sys.argv) != 5:
+        print(
+            'Usage: python predict_slippage.py token_in token_out lltv [chain]')
         sys.exit(1)
     print("Sorry I am a bit slow to load, please wait one or two minutes")
 
     # Example:
     # python predict_slippage.py 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 0.95
-        
-    token_in = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0' # wsteth
-    token_out = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' # weth
+
+    token_in = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0'  # wsteth
+    token_out = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'  # weth
     lltv = 0.95
 
     token_in = Web3.to_checksum_address(sys.argv[1])
     token_out = Web3.to_checksum_address(sys.argv[2])
     lltv = float(sys.argv[3])
+    if len(sys.argv) == 4:
+        chain_id = ETHEREUM_CHAIN_ID
+    elif len(sys.argv) == 5:
+        assert sys.argv[4] in ['ethereum', 'base']
+        chain_id = ETHEREUM_CHAIN_ID if sys.argv[4] == 'ethereum' else BASE_CHAIN_ID
 
     api_key = os.environ['ONEINCH_API_KEY']
     w3 = Web3(Web3.HTTPProvider(os.environ['RPC_URL']))
@@ -163,24 +160,13 @@ if __name__ == '__main__':
     critical_ltv = 1 / lif
     p = lltv / critical_ltv
 
-    amount_slippage = predict_slippage(p, token_in, decimal_in, total_supply_in, token_out, decimal_out, api_key)
-    
+    amount_slippage = predict_slippage(
+        p, token_in, decimal_in, total_supply_in, token_out, decimal_out, api_key, chain_id)
+
     time.sleep(1.5)
-    price = get_onchain_price(token_in, decimal_in, api_key)
+    price = get_onchain_price(token_in, decimal_in, api_key, chain_id)
     amount_slippage_usd = amount_slippage * price / 10**decimal_in
 
-    time.sleep(1.5)
-    path = get_path(amount_slippage, token_in, token_out, api_key)
-
-    print("Swap should be done using the following path:")
-    for subpath in path[0][0]:
-        try:
-            print(subpath['name'], '->', subpath['part'], "% of the swap")
-        except:
-            print(subpath)
-
-    print(f'Amount to cause {(1-p)*100}% slippage on {symbol_in}/{symbol_out}:\n' +\
-          f'\r {number_to_readable(amount_slippage / 10**decimal_in)} {symbol_in} = '+\
+    print(f'Amount to cause {(1-p)*100}% slippage on {symbol_in}/{symbol_out}:\n' +
+          f'\r {number_to_readable(amount_slippage / 10**decimal_in)} {symbol_in} = ' +
           f'{number_to_readable(amount_slippage_usd)} USD')
-
-
