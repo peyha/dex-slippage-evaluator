@@ -8,7 +8,7 @@ Compute for a given Morpho Blue market (collateral token, loan token and LLTV) t
 
 ## Requirements
 
-- You should set a Node Provider URL in your $RPC_URL environment variable. This RPC_URL should handle the specified chain.
+- You should set a Node Provider URL in your $RPC_URL environment variable. This RPC_URL should handle the specified chain. On base, the public RPC is `https://mainnet.base.org`
 
 `export RPC_URL=<Provider_URL>`
 
