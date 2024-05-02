@@ -11,7 +11,7 @@ ETHEREUM_CHAIN_ID = 1
 
 chain_id_to_usdc = {
     ETHEREUM_CHAIN_ID: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-    BASE_CHAIN_ID: '"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+    BASE_CHAIN_ID: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 }
 
 
@@ -64,9 +64,12 @@ def get_amount_out(amount_in, token_in, token_out, api_key, chain_id):
     response = requests.get(api_url, headers=headers, params=params)
     try:
         amount_out = int(response.json()['toAmount'])
-    except:
-        raise ValueError(f"API error: {response.text}")
 
+    except:
+        if 'insufficient liquidity' in response.text:
+            amount_out = 1  # Almost zero
+        else:
+            raise ValueError(f"API error: {response.text}")
     return amount_out
 
 
@@ -74,7 +77,7 @@ def get_onchain_price(token_in, decimal_in, api_key, chain_id):
     ''' Get onchain price of a token in USD 
     using 1inch Routing API by swapping 1 token for USDC'''
 
-    token_out, decimal_out = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6  # USDC
+    token_out, decimal_out = chain_id_to_usdc[chain_id], 6  # USDC
 
     amount_out = get_amount_out(
         1 * 10**decimal_in, token_in, token_out, api_key, chain_id)
@@ -87,7 +90,7 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
     ''' Predict the amount of token_in needed to cause a certain slippage
     percentage on token_in/token_out pair using 1inch Routing API'''
 
-    amount_in = 1 ** 10**decimal_in
+    amount_in = 1 * 10**decimal_in
     amount_out = get_amount_out(
         amount_in, token_in, token_out, api_key, chain_id)
     initial_price = amount_out / amount_in  # reference price
@@ -96,8 +99,9 @@ def predict_slippage(percentage, token_in, decimal_in, total_supply_in, token_ou
     amount_right = total_supply_in
 
     # Binary search
-    N_iter = 10
+    N_iter = 20
     for _ in range(N_iter):
+
         amount_mid = (amount_left + amount_right) // 2
 
         # Sleep to prevent API spamming
